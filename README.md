@@ -32,3 +32,7 @@ make
 ```
 ./yourcode.out probability sigmoid inputvector.txt outputvector.txt
 ```
+- To remove the loader files which are main.o and yourcode.out, use command
+```
+make clean
+```
