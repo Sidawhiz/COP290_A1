@@ -20,11 +20,11 @@ make
 ```
 ./yourcode.out activation tanh inputmatrix.txt outputmatrix.txt
 ```
-### stride in below command is integer value
+### stride in command below is integer value
 ```
 ./yourcode.out pooling max inputmatrix.txt stride outputmatrix.txt
 ```
-### stride in below command is integer value
+### stride in command below is integer value
 ```
 ./yourcode.out pooling average inputmatrix.txt stride outputmatrix.txt
 ```
