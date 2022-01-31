@@ -274,10 +274,11 @@ int main(int argc, char *argv[])
     //cout << t[0] <<endl;
     try{
         if(argc==6){
+            //cout << "Hi " << endl;
             if(strcmp(argv[1],"fullyconnected")==0){
                 vvf f = fullyconnected(read_matrix(argv[2]),read_matrix(argv[3]),read_matrix(argv[4]));
                 write(argv[5],f);
-            }  
+            }
             else if(strcmp(argv[1],"pooling")==0){
                 int stride = stoi(argv[4]);
                 if(strcmp(argv[2],"max")==0){
@@ -288,7 +289,12 @@ int main(int argc, char *argv[])
                     vvf f = avgpooling(read_matrix(argv[3]),stride);
                     write(argv[5],f);
                 }
-            }  
+            }
+            else{
+                cout << "Invalid use of commands\n";
+                error = 1;
+                exit(0);
+            }
         } 
         else if(argc==5){
             if(strcmp(argv[1],"activation")==0){
@@ -311,6 +317,12 @@ int main(int argc, char *argv[])
                     write_vector(argv[4],f);
                 }
             }  
+            else{
+                cout << "Invalid use of commands\n";
+                error = 1;
+                exit(0);
+                //cout << "Hi"<<endl;
+            }
         }
         else{
             cout << "Invalid use of commands\n";
@@ -318,7 +330,7 @@ int main(int argc, char *argv[])
             exit(0);
         }
     }
-    catch (const char* msg){
+    catch (...){
         cout << "Error catched" << endl;
         error = 1;
         exit(0);
