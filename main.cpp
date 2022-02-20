@@ -4,7 +4,11 @@
 #include <vector>
 #include <fstream>
 #include <cmath>
-
+#include <pthread.h>
+#include "umkl.h"
+#include "ublas.h"
+#include <chrono>
+#include <numeric>
 using namespace std;
 
 //========================TypeDefs===================================
@@ -269,15 +273,246 @@ void write_vector(string s, vf tem){
     }
 }
 
+vvf fully_mkl(vvf m1, vvf m2, vvf m3){
+    vvf ans;
+    ans = mult_mkl(m1,m2);
+    ans = add(ans,m3);
+    return ans;
+}
+
+vvf fully_blas(vvf m1, vvf m2, vvf m3){
+    vvf ans;
+    ans = mult_blas(m1,m2);
+    ans = add(ans,m3);
+    return ans;
+}
+
+//pthread implementation
+struct matrix_mult_struct
+{
+    int start_row;
+    int end_row;
+    int start_col;
+    int end_col;
+    vvf input;
+    vvf weight;
+    vvf* product;
+    
+};
+
+//normal matrix multiplication operation which we will split into parallel threads
+void* matrix_mult_2(void* arg)
+{
+    try{
+        struct matrix_mult_struct *obj = (struct matrix_mult_struct *)arg;
+        int b = (obj->weight).size();
+        int c = (obj->weight)[0].size();
+        
+        if(b!=(obj->input)[0].size()) throw "Number of columns of input matrix not equal to number of rows of weight matrix";
+        
+        
+        
+        for(int i=(obj->start_row); i<(obj->end_row); i++)
+        {
+            for(int j=(obj->start_col); j<(obj->end_col); j++)
+            {
+                float sum=0;
+                for(int k=0; k<b; k++)
+                    sum += (obj->input)[i][k] * (obj->weight)[k][j];
+                (*(obj->product))[i][j]=sum;
+            }
+        }
+        pthread_exit(0);
+        
+    }
+    catch(string msg){
+        throw move(msg);
+    }
+}
+
+
+//threading
+vvf mult_pthread(vvf input, vvf weight)
+{
+    
+    int row = input.size();
+    int col = weight[0].size();
+    vvf product(row,vf(col,0));
+
+    int max_thread=4;
+    int thread_row = row/(max_thread/2);
+    int thread_col = col/(max_thread - max_thread/2);
+    struct matrix_mult_struct split_thread[max_thread];
+    
+
+    pthread_t tids[max_thread];
+    
+    int count = 0;
+    for(int i=0; i<max_thread/2; i++){
+        for(int j=0; j<max_thread - max_thread/2; j++){
+            split_thread[count++] = {i*thread_row, max(row,(i+1)*thread_row), j*thread_col, max(col,(j+1)*thread_col), input, weight, &product};
+            
+        }
+    }
+    
+    for(int i=0; i<max_thread; i++)
+        pthread_create(&tids[i], NULL, matrix_mult_2, &split_thread[i]);
+
+    for(int i=0; i<max_thread; i++)
+        pthread_join(tids[i], NULL);
+
+    return product;
+}
+
+vvf fully_pthread(vvf m1, vvf m2, vvf m3){
+    vvf ans;
+    ans = mult_pthread(m1,m2);
+    ans = add(ans,m3);
+    return ans;
+}
+
+
+float timedwork_mkl(vvf m1, vvf m2, vvf m3, string r)
+{
+   // starttimer();
+   auto begin = std::chrono::high_resolution_clock::now();
+   vvf f = fully_mkl(m1, m2, m3);
+   write(r,f);
+   auto end = std::chrono::high_resolution_clock::now();
+   auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+   // return(1e-6 * elapsed.count());
+   return(1e-6 * (std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin)).count());
+   // return mssince();
+}
+
+float timedwork_pthread(vvf m1, vvf m2, vvf m3, string r)
+{
+   // starttimer();
+   auto begin = std::chrono::high_resolution_clock::now();
+   vvf f = fully_pthread(m1, m2, m3);
+   write(r,f);
+   auto end = std::chrono::high_resolution_clock::now();
+   auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+   // return(1e-6 * elapsed.count());
+   return(1e-6 * (std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin)).count());
+   // return mssince();
+}
+
+
+float timedwork_blas(vvf m1, vvf m2, vvf m3, string r)
+{
+   // starttimer();
+   auto begin = std::chrono::high_resolution_clock::now();
+   vvf f = fully_blas(m1, m2, m3);
+   write(r,f);
+   auto end = std::chrono::high_resolution_clock::now();
+   auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+   // return(1e-6 * elapsed.count());
+   return(1e-6 * (std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin)).count());
+   // return mssince();
+}
+
+
+float timedwork_ori(vvf m1, vvf m2, vvf m3, string r)
+{
+   // starttimer();
+   auto begin = std::chrono::high_resolution_clock::now();
+   vvf f = fullyconnected(m1, m2, m3);
+   write(r,f);
+   auto end = std::chrono::high_resolution_clock::now();
+   auto elapsed = std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin);
+   // return(1e-6 * elapsed.count());
+   return(1e-6 * (std::chrono::duration_cast<std::chrono::nanoseconds>(end - begin)).count());
+   // return mssince();
+}
+
+float mean_calc(vf t){
+    float mean = (float)(accumulate(t.begin(),t.end(),0.0)/t.size());
+    return mean;
+}
+
+float stdev_calc(vf t){
+    float stdev ;
+    int len = t.size();
+    float mean = mean_calc(t);
+    double temp = 0.0;
+    for(int i=0; i<len; i++){
+        temp += pow(t[i]-mean,2);
+    }
+    temp=temp/len;
+    stdev = (float)sqrt(temp);
+    return stdev;
+    
+}
+
+
 int main(int argc, char *argv[])
 {   
     //cout << t[0] <<endl;
     try{
-        if(argc==6){
+        if(argc==7){
             //cout << "Hi " << endl;
             if(strcmp(argv[1],"fullyconnected")==0){
-                vvf f = fullyconnected(read_matrix(argv[2]),read_matrix(argv[3]),read_matrix(argv[4]));
-                write(argv[5],f);
+                if(strcmp(argv[2],"mkl")==0){
+                    vf gh;
+                    for(int i = 0; i<30; i++){
+                        float time = timedwork_mkl(read_matrix(argv[3]),read_matrix(argv[4]),read_matrix(argv[5]),argv[6]);
+                        gh.pb(time);
+                    }    
+                    float me = mean_calc(gh);
+                    float dev = stdev_calc(gh);
+                    std::cout<<"Mean is " << me << " ms"<<std::endl;
+                    std::cout<<"Standard deviation is " << dev << " ms"<<std::endl;
+                }
+                else if(strcmp(argv[2],"openblas")==0){
+                    //float time = timedwork_blas(read_matrix(argv[3]),read_matrix(argv[4]),read_matrix(argv[5]),argv[6]);
+                    vf gh;
+                    for(int i = 0; i<30; i++){
+                        float time = timedwork_blas(read_matrix(argv[3]),read_matrix(argv[4]),read_matrix(argv[5]),argv[6]);
+                        gh.pb(time);
+                    }    
+                    float me = mean_calc(gh);
+                    float dev = stdev_calc(gh);
+                    std::cout<<"Mean is " << me << " ms"<<std::endl;
+                    std::cout<<"Standard deviation is " << dev << " ms"<<std::endl;
+                }
+                else if(strcmp(argv[2],"pthread")==0){
+                    //float time = timedwork_pthread(read_matrix(argv[3]),read_matrix(argv[4]),read_matrix(argv[5]),argv[6]);
+                    vf gh;
+                    for(int i = 0; i<30; i++){
+                        float time = timedwork_pthread(read_matrix(argv[3]),read_matrix(argv[4]),read_matrix(argv[5]),argv[6]);
+                        gh.pb(time);
+                    }    
+                    float me = mean_calc(gh);
+                    float dev = stdev_calc(gh);
+                    std::cout<<"Mean is " << me << " ms"<<std::endl;
+                    std::cout<<"Standard deviation is " << dev << " ms"<<std::endl;
+                }
+                else{
+                    cout << "Invalid use of commands\n";
+                    error = 1;
+                    exit(0);
+                }
+            }
+            else{
+                cout << "Invalid use of commands\n";
+                error = 1;
+                exit(0);
+            }
+        } 
+        else if(argc==6){
+            //cout << "Hi " << endl;
+            if(strcmp(argv[1],"fullyconnected")==0){
+                //float time = timedwork_mkl(read_matrix(argv[2]),read_matrix(argv[3]),read_matrix(argv[4]),argv[5]);
+                vf gh;
+                for(int i = 0; i<30; i++){
+                    float time = timedwork_ori(read_matrix(argv[2]),read_matrix(argv[3]),read_matrix(argv[4]),argv[5]);
+                    gh.pb(time);
+                }    
+                float me = mean_calc(gh);
+                float dev = stdev_calc(gh);
+                std::cout<<"Mean is " << me << " ms"<<std::endl;
+                std::cout<<"Standard deviation is " << dev << " ms"<<std::endl;
             }
             else if(strcmp(argv[1],"pooling")==0){
                 int stride = stoi(argv[4]);
@@ -337,4 +572,3 @@ int main(int argc, char *argv[])
     }
     return 0;
 }
-
