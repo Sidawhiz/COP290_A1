@@ -58,4 +58,7 @@ export LD_LIBRARY_PATH=<<current working directory>>
 ```
 make all
 ```
-
+- Commands to execute in terminal , arguement 1 has to be defined by user
+```
+./yourcode.out mfcc_features/ca4d5368_nohash_5.txt out.txt
+```
