@@ -38,3 +38,24 @@ make
 ```
 make clean
 ```
+
+## Part3
+
+- To compile the code use following command
+
+```
+export MKL_LIB=<<path to mkl libraries>>
+```
+
+```
+export MKL_INC=<<path to mkl include>>
+```
+
+```
+export LD_LIBRARY_PATH=<<current working directory>>
+```
+
+```
+make all
+```
+
